@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
 import numpy as np
 import cv2
@@ -9,6 +10,16 @@ import uuid
 import base64
 
 app = FastAPI()
+
+# Add CORS middleware for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 model = YOLO("models/best.pt")  # Your YOLO model path
 
 def get_pixels_per_meter(lat: float, zoom: int) -> float:
@@ -19,14 +30,16 @@ def get_pixels_per_meter(lat: float, zoom: int) -> float:
     meters_per_pixel = 156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)
     return 1 / meters_per_pixel
 
-@app.post("/predict/")
-async def predict(
-    file: UploadFile = File(...),
-    lat: float = Form(...),
-    zoom: int = Form(...)
+@app.post("/api/detect-pools")
+async def detect_pools(
+    image: UploadFile = File(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    zoom: int = Form(...),
+    address: str = Form(...)
 ):
     # Step 1: Read and prepare the image
-    contents = await file.read()
+    contents = await image.read()
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
@@ -39,7 +52,7 @@ async def predict(
     estimated_areas_m2 = []
 
     # Step 3: Calculate ppm
-    ppm = get_pixels_per_meter(lat, zoom)
+    ppm = get_pixels_per_meter(latitude, zoom)
 
     # Step 4: Loop over results and calculate real-world area
     for result in results:
